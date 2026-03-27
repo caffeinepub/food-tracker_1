@@ -101,9 +101,17 @@ const DONATE_INITIAL = {
 };
 
 export default function App() {
-  const { login, clear, loginStatus, identity } = useInternetIdentity();
+  const { login, clear, loginStatus, identity, isLoginError, loginError } =
+    useInternetIdentity();
   const isLoggedIn = loginStatus === "success" && !!identity;
   const isLoggingIn = loginStatus === "logging-in";
+  const isInitializing = loginStatus === "initializing";
+  const [showPopupHint, setShowPopupHint] = useState(false);
+
+  const handleLogin = () => {
+    setShowPopupHint(true);
+    login();
+  };
 
   const { data: stats, isLoading: statsLoading } = useGetStats();
   const { data: entries = [], isLoading: entriesLoading } =
@@ -196,6 +204,10 @@ export default function App() {
 
   async function handleDonateSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (!isLoggedIn) {
+      toast.error("Please log in to donate food.");
+      return;
+    }
     if (!donateForm.foodName.trim()) {
       toast.error("Please enter a food name.");
       return;
@@ -302,11 +314,15 @@ export default function App() {
                 data-ocid="nav.login.button"
                 type="button"
                 onClick={login}
-                disabled={isLoggingIn}
+                disabled={isLoggingIn || isInitializing}
                 className="btn-green flex items-center gap-2 text-white text-sm font-semibold px-5 py-2 rounded-full transition-all"
               >
                 <LogIn className="w-4 h-4" />
-                {isLoggingIn ? "Signing in..." : "Log Waste"}
+                {isInitializing
+                  ? "Loading..."
+                  : isLoggingIn
+                    ? "Signing in..."
+                    : "Log Waste"}
               </button>
             )}
           </div>
@@ -364,13 +380,38 @@ export default function App() {
             <button
               data-ocid="login.primary_button"
               type="button"
-              onClick={login}
-              disabled={isLoggingIn}
+              onClick={handleLogin}
+              disabled={isLoggingIn || isInitializing}
               className="btn-green text-white font-semibold px-8 py-3 rounded-full text-base flex items-center gap-2 transition-all"
             >
               <LogIn className="w-5 h-5" />
-              {isLoggingIn ? "Connecting..." : "Sign In to Continue"}
+              {isInitializing
+                ? "Loading..."
+                : isLoggingIn
+                  ? "Connecting..."
+                  : "Sign In to Continue"}
             </button>
+            {isLoginError && (
+              <div
+                data-ocid="login.error_state"
+                className="mt-4 flex items-start gap-2 bg-red-50 border border-red-200 text-red-700 text-sm rounded-xl px-4 py-3 max-w-sm text-left"
+              >
+                <span className="mt-0.5">⚠️</span>
+                <span>
+                  Sign-in failed. Please allow popups for this site and try
+                  again.{" "}
+                  {loginError?.message && (
+                    <span className="opacity-70">({loginError.message})</span>
+                  )}
+                </span>
+              </div>
+            )}
+            {showPopupHint && !isLoginError && (
+              <p className="mt-3 text-xs text-gray-400 max-w-xs">
+                A popup will open for sign-in. If nothing happens, please allow
+                popups in your browser settings.
+              </p>
+            )}
           </motion.div>
         ) : (
           <>
@@ -1079,11 +1120,24 @@ export default function App() {
                                 />
                               </div>
                             </div>
-                            <div className="mt-5 flex justify-end">
+                            <div className="mt-5 flex justify-end items-center gap-3">
+                              {!isLoggedIn && (
+                                <span className="text-sm text-amber-600 font-medium">
+                                  Please log in to submit
+                                </span>
+                              )}
                               <button
                                 data-ocid="donate_form.submit_button"
                                 type="submit"
-                                disabled={addDonation.isPending}
+                                disabled={addDonation.isPending || !isLoggedIn}
+                                onClick={
+                                  !isLoggedIn
+                                    ? (e) => {
+                                        e.preventDefault();
+                                        login();
+                                      }
+                                    : undefined
+                                }
                                 className="btn-green text-white font-semibold px-8 py-2.5 rounded-full text-sm flex items-center gap-2 transition-all disabled:opacity-70"
                                 style={{
                                   background:
@@ -1091,9 +1145,11 @@ export default function App() {
                                 }}
                               >
                                 <Gift className="w-4 h-4" />
-                                {addDonation.isPending
-                                  ? "Listing..."
-                                  : "List Donation"}
+                                {!isLoggedIn
+                                  ? "Log in to Donate"
+                                  : addDonation.isPending
+                                    ? "Listing..."
+                                    : "List Donation"}
                               </button>
                             </div>
                           </form>
@@ -1332,24 +1388,28 @@ export default function App() {
                                         </div>
                                       </div>
 
-                                      {isLoggedIn && (
-                                        <button
-                                          type="button"
-                                          data-ocid={`ngo_portal.claim_button.${idx + 1}`}
-                                          onClick={() =>
-                                            handleClaim(donation.id)
-                                          }
-                                          disabled={claimDonation.isPending}
-                                          className="flex-shrink-0 flex items-center gap-2 text-white font-semibold text-sm px-5 py-2 rounded-full transition-all disabled:opacity-70"
-                                          style={{
-                                            background:
-                                              "linear-gradient(45deg, #28a745, #34d058)",
-                                          }}
-                                        >
-                                          <CheckCircle2 className="w-4 h-4" />
-                                          Claim Pickup
-                                        </button>
-                                      )}
+                                      <button
+                                        type="button"
+                                        data-ocid={`ngo_portal.claim_button.${idx + 1}`}
+                                        onClick={() =>
+                                          isLoggedIn
+                                            ? handleClaim(donation.id)
+                                            : login()
+                                        }
+                                        disabled={
+                                          isLoggedIn && claimDonation.isPending
+                                        }
+                                        className="flex-shrink-0 flex items-center gap-2 text-white font-semibold text-sm px-5 py-2 rounded-full transition-all disabled:opacity-70"
+                                        style={{
+                                          background:
+                                            "linear-gradient(45deg, #28a745, #34d058)",
+                                        }}
+                                      >
+                                        <CheckCircle2 className="w-4 h-4" />
+                                        {isLoggedIn
+                                          ? "Claim Pickup"
+                                          : "Log in to Claim"}
+                                      </button>
                                     </div>
                                   </motion.div>
                                 ),
@@ -1386,14 +1446,18 @@ export default function App() {
                               type="button"
                               data-ocid="ngo_portal.login.button"
                               onClick={login}
-                              disabled={isLoggingIn}
+                              disabled={isLoggingIn || isInitializing}
                               className="flex-shrink-0 text-white font-semibold text-sm px-5 py-2 rounded-full transition-all"
                               style={{
                                 background:
                                   "linear-gradient(45deg, #28a745, #34d058)",
                               }}
                             >
-                              {isLoggingIn ? "Signing in..." : "Sign In"}
+                              {isInitializing
+                                ? "Loading..."
+                                : isLoggingIn
+                                  ? "Signing in..."
+                                  : "Sign In"}
                             </button>
                           </motion.div>
                         )}
